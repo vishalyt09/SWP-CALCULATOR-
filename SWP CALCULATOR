@@ -1,0 +1,239 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>SWP Calculator with AdSense</title>
+
+  <!-- Chart.js for the graph -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+
+  <!-- ✅ Google AdSense script: put your real publisher ID here -->
+  <script async
+    src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-XXXXXXXXXXXXXXXX"
+    crossorigin="anonymous"></script>
+
+  <style>
+    :root{--card:#fff;--muted:#6b7280;--accent:#2563eb;--bg:#f3f4f6}
+    body{font-family:Inter,ui-sans-serif,system-ui,Segoe UI,Roboto,"Helvetica Neue",Arial;
+         line-height:1.4;background:var(--bg);margin:0;padding:20px}
+    .container{max-width:1100px;margin:0 auto}
+    .card{background:var(--card);border-radius:12px;padding:18px;
+          box-shadow:0 6px 18px rgba(17,24,39,0.06)}
+    h1{margin:0 0 14px;font-size:20px}
+    .grid{display:grid;gap:12px}
+    .grid.cols-3{grid-template-columns:repeat(3,1fr)}
+    .field{display:flex;flex-direction:column;gap:6px}
+    label{font-size:13px;color:var(--muted)}
+    input[type="number"], select{padding:8px;border:1px solid #e5e7eb;
+                                 border-radius:8px;font-size:14px}
+    .row{display:flex;gap:10px;flex-wrap:wrap}
+    .stat{background:#f8fafc;padding:12px;border-radius:8px;flex:1;min-width:170px}
+    .stat .num{font-weight:600;font-size:18px}
+    table{width:100%;border-collapse:collapse;margin-top:12px;font-size:13px}
+    th,td{padding:8px;border-bottom:1px solid #eef2f6;text-align:right}
+    th:first-child,td:first-child{text-align:left}
+    button{padding:8px 12px;border-radius:8px;border:0;background:var(--accent);
+           color:white;cursor:pointer}
+    button.secondary{background:#e5e7eb;color:#111}
+    .small{font-size:12px;color:var(--muted)}
+  </style>
+</head>
+<body>
+<div class="container">
+  <div class="card">
+    <h1>SWP Calculator (HTML + JS)</h1>
+
+    <div class="grid cols-3" id="inputs">
+      <div class="field">
+        <label>Principal (₹)</label>
+        <input id="principal" type="number" value="1000000" min="0" />
+      </div>
+      <div class="field">
+        <label>Expected Annual Return (%)</label>
+        <input id="annualReturn" type="number" value="8" step="0.01" />
+      </div>
+      <div class="field">
+        <label>Withdrawal per period (₹)</label>
+        <input id="withdrawal" type="number" value="20000" />
+      </div>
+      <div class="field">
+        <label>Frequency</label>
+        <select id="frequency">
+          <option value="Monthly">Monthly</option>
+          <option value="Quarterly">Quarterly</option>
+          <option value="Yearly">Yearly</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Tenure (years)</label>
+        <input id="tenureYears" type="number" value="10" min="1" />
+      </div>
+      <div class="field">
+        <label><input id="inflAdj" type="checkbox" /> Adjust for inflation</label>
+        <input id="inflationRate" type="number" value="4" min="0" step="0.01" style="margin-top:6px" />
+        <div class="small">Inflation rate (%/year)</div>
+      </div>
+    </div>
+
+    <div style="margin-top:14px" class="row">
+      <button id="calcBtn">Calculate</button>
+      <button id="downloadCsv" class="secondary">Download CSV</button>
+      <button id="resetBtn" class="secondary">Reset</button>
+      <div style="flex:1"></div>
+      <div class="small">Illustrative only—real returns vary.</div>
+    </div>
+
+    <!-- ✅ Hidden AdSense container; will be revealed on Calculate -->
+    <div id="calcAd" style="display:none;margin-top:20px;">
+      <ins class="adsbygoogle"
+           style="display:block"
+           data-ad-client="ca-pub-XXXXXXXXXXXXXXXX"
+           data-ad-slot="YYYYYYYYYY"
+           data-ad-format="auto"
+           data-full-width-responsive="true"></ins>
+    </div>
+
+    <div style="margin-top:16px" class="row">
+      <div class="stat"><div class="small">Total Withdrawn</div><div id="totalWithdrawn" class="num">₹ 0</div></div>
+      <div class="stat"><div class="small">Total Interest</div><div id="totalInterest" class="num">₹ 0</div></div>
+      <div class="stat"><div class="small">Ending Balance</div><div id="endingBalance" class="num">₹ 0</div></div>
+    </div>
+
+    <div style="margin-top:18px">
+      <canvas id="balanceChart" height="120"></canvas>
+    </div>
+
+    <div id="tableWrap" style="margin-top:12px;" class="card" >
+      <div style="padding:12px">
+        <strong>Schedule</strong>
+        <div style="overflow:auto;margin-top:8px">
+          <table id="scheduleTable">
+            <thead>
+              <tr>
+                <th>#</th><th>Start Balance</th><th>Interest</th><th>Withdrawal</th><th>End Balance</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  const el=id=>document.getElementById(id);
+  const fmt=v=>Number(v||0).toLocaleString(undefined,{maximumFractionDigits:2});
+  const rupee=s=>'₹ '+s;
+
+  const principalEl=el('principal'),
+        annualReturnEl=el('annualReturn'),
+        withdrawalEl=el('withdrawal'),
+        frequencyEl=el('frequency'),
+        tenureYearsEl=el('tenureYears'),
+        inflAdjEl=el('inflAdj'),
+        inflationRateEl=el('inflationRate');
+
+  const totalWithdrawnEl=el('totalWithdrawn'),
+        totalInterestEl=el('totalInterest'),
+        endingBalanceEl=el('endingBalance'),
+        scheduleTableBody=document.querySelector('#scheduleTable tbody');
+
+  let chart=null,currentSchedule=[];
+
+  function getPeriodsPerYear(f){return f==='Monthly'?12:(f==='Quarterly'?4:1);}
+
+  function buildSchedule({principal,annualReturnPct,withdrawal,frequency,tenureYears,inflationAdjust,inflationRatePct}){
+    const p=+principal||0,r=(+annualReturnPct||0)/100,f=getPeriodsPerYear(frequency),
+          w=+withdrawal||0,yrs=+tenureYears||0,inf=(+inflationRatePct||0)/100;
+    const perRate=r/f,infPer=inf/f,tot=Math.max(1,Math.round(yrs*f));
+    let bal=p,cw=w,rows=[];
+    for(let i=1;i<=tot;i++){
+      const start=bal,interest=start*perRate,after=start+interest;
+      const wd=Math.min(after,cw),end=after-wd;
+      rows.push({period:i,startBalance:start,interest,withdrawal:wd,endBalance:Math.max(0,end)});
+      bal=end;
+      if(inflationAdjust) cw*=1+infPer;
+      if(bal<=0){for(let j=i+1;j<=tot;j++)rows.push({period:j,startBalance:0,interest:0,withdrawal:0,endBalance:0});break;}
+    }
+    return rows;
+  }
+
+  function render(){
+    const data={
+      principal:principalEl.value,
+      annualReturnPct:annualReturnEl.value,
+      withdrawal:withdrawalEl.value,
+      frequency:frequencyEl.value,
+      tenureYears:tenureYearsEl.value,
+      inflationAdjust:inflAdjEl.checked,
+      inflationRatePct:inflationRateEl.value
+    };
+    const schedule=buildSchedule(data);
+    const tW=schedule.reduce((s,r)=>s+r.withdrawal,0),
+          tI=schedule.reduce((s,r)=>s+r.interest,0),
+          eB=schedule[schedule.length-1]?.endBalance||0;
+    totalWithdrawnEl.textContent=rupee(fmt(tW));
+    totalInterestEl.textContent=rupee(fmt(tI));
+    endingBalanceEl.textContent=rupee(fmt(eB));
+
+    scheduleTableBody.innerHTML='';
+    schedule.forEach(r=>{
+      const tr=document.createElement('tr');
+      tr.innerHTML=`<td>${r.period}</td>
+                    <td>${rupee(fmt(r.startBalance))}</td>
+                    <td>${rupee(fmt(r.interest))}</td>
+                    <td>${rupee(fmt(r.withdrawal))}</td>
+                    <td>${rupee(fmt(r.endBalance))}</td>`;
+      scheduleTableBody.appendChild(tr);
+    });
+
+    const labels=schedule.map(r=>'#'+r.period),
+          dataPoints=schedule.map(r=>+r.endBalance.toFixed(2));
+    if(chart){chart.data.labels=labels;chart.data.datasets[0].data=dataPoints;chart.update();}
+    else{
+      chart=new Chart(document.getElementById('balanceChart').getContext('2d'),{
+        type:'line',
+        data:{labels,datasets:[{label:'End Balance',data:dataPoints,tension:0.25,borderWidth:2,fill:false,pointRadius:0}]},
+        options:{responsive:true,maintainAspectRatio:false,
+                 scales:{y:{ticks:{callback:v=>'₹ '+v.toLocaleString()}}},
+                 plugins:{legend:{display:false}}}
+      });
+    }
+    currentSchedule=schedule;
+  }
+
+  document.getElementById('calcBtn').addEventListener('click',()=>{
+    render();
+    // ✅ Show AdSense ad after Calculate
+    const adDiv=document.getElementById('calcAd');
+    adDiv.style.display='block';
+    (adsbygoogle = window.adsbygoogle || []).push({});
+  });
+
+  document.getElementById('downloadCsv').addEventListener('click',()=>{
+    if(!currentSchedule.length){alert('Calculate first');return;}
+    const csv=[['Period','Start','Interest','Withdrawal','End'],
+               ...currentSchedule.map(r=>[r.period,r.startBalance.toFixed(2),r.interest.toFixed(2),r.withdrawal.toFixed(2),r.endBalance.toFixed(2)])]
+               .map(r=>r.join(',')).join('\n');
+    const blob=new Blob([csv],{type:'text/csv'}),url=URL.createObjectURL(blob);
+    const a=document.createElement('a');a.href=url;a.download='swp_schedule.csv';a.click();URL.revokeObjectURL(url);
+  });
+
+  document.getElementById('resetBtn').addEventListener('click',()=>{
+    principalEl.value=1000000;annualReturnEl.value=8;withdrawalEl.value=20000;
+    frequencyEl.value='Monthly';tenureYearsEl.value=10;inflAdjEl.checked=false;inflationRateEl.value=4;
+    render();
+  });
+
+  // auto render on change
+  [principalEl,annualReturnEl,withdrawalEl,frequencyEl,tenureYearsEl,inflAdjEl,inflationRateEl]
+    .forEach(i=>i.addEventListener('change',render));
+
+  render();
+})();
+</script>
+</body>
+</html>
